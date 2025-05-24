@@ -34,7 +34,7 @@ def hello_world():
 ### Links and Images
 [Visit GitHub](https://github.com)
 
-![Sample Image](https://picsum.photos/800/600)
+![Sample Image](https://picsum.photos/800/600 "Caption")
 
 ### Tables
 | Name | Age | Occupation |

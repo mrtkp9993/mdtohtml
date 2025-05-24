@@ -16,18 +16,26 @@ class MarkdownConverter:
         soup = BeautifulSoup(html_content, 'html.parser')
         for img in soup.find_all('img'):
             src = img.get('src', '')
+            alt = img.get('alt', '')
+            title = img.get('title', '')
+            
+            # Use title as caption if available, otherwise use alt text
+            caption = title if title else alt
+            
             if src.startswith(('http://', 'https://')):
                 try:
                     import requests
                     response = requests.get(src)
                     img_data = response.content
-                except:
+                except Exception as e:
+                    print(f"Error downloading image {src}: {e}")
                     continue
             else:
                 try:
                     with open(src, 'rb') as f:
                         img_data = f.read()
-                except:
+                except Exception as e:
+                    print(f"Error reading local image {src}: {e}")
                     continue
 
             try:
@@ -38,7 +46,25 @@ class MarkdownConverter:
                 output_path = os.path.join(self.image_dir, filename)
                 image.save(output_path)
                 
-                img['src'] = os.path.relpath(output_path, os.path.dirname(self.image_dir))
+                # Create figure element with image and caption
+                figure = soup.new_tag('figure')
+                figure['class'] = 'image-caption'
+                
+                # Create a new img tag
+                new_img = soup.new_tag('img')
+                new_img['src'] = os.path.relpath(output_path, os.path.dirname(self.image_dir))
+                new_img['alt'] = alt
+                figure.append(new_img)
+                
+                # Add caption if available
+                if caption:
+                    figcaption = soup.new_tag('figcaption')
+                    figcaption.string = caption
+                    figure.append(figcaption)
+                
+                # Replace the original img with the figure
+                img.replace_with(figure)
+                
             except Exception as e:
                 print(f"Error processing image {src}: {e}")
 
@@ -67,7 +93,7 @@ class MarkdownConverter:
             src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
         </script>
         """
-
+        
         html = markdown.markdown(
             markdown_text,
             extensions=[
@@ -99,6 +125,14 @@ class MarkdownConverter:
                 input[type="checkbox"] {{ margin-right: 8px; }}
                 .task-list-item {{ list-style-type: none; }}
                 .task-list-item-checkbox {{ margin-right: 8px; }}
+                figure.image-caption {{ margin: 1em 0; text-align: center; }}
+                figure.image-caption img {{ display: block; margin: 0 auto; }}
+                figure.image-caption figcaption {{ 
+                    color: #666;
+                    font-size: 0.9em;
+                    margin-top: 0.5em;
+                    text-align: center;
+                }}
             </style>
             {mathjax_config}
         </head>
