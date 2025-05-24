@@ -18,8 +18,6 @@ class MarkdownConverter:
             src = img.get('src', '')
             alt = img.get('alt', '')
             title = img.get('title', '')
-            
-            # Use title as caption if available, otherwise use alt text
             caption = title if title else alt
             
             if src.startswith(('http://', 'https://')):
@@ -46,23 +44,19 @@ class MarkdownConverter:
                 output_path = os.path.join(self.image_dir, filename)
                 image.save(output_path)
                 
-                # Create figure element with image and caption
                 figure = soup.new_tag('figure')
                 figure['class'] = 'image-caption'
                 
-                # Create a new img tag
                 new_img = soup.new_tag('img')
                 new_img['src'] = os.path.relpath(output_path, os.path.dirname(self.image_dir))
                 new_img['alt'] = alt
                 figure.append(new_img)
                 
-                # Add caption if available
                 if caption:
                     figcaption = soup.new_tag('figcaption')
                     figcaption.string = caption
                     figure.append(figcaption)
                 
-                # Replace the original img with the figure
                 img.replace_with(figure)
                 
             except Exception as e:
