@@ -1,148 +1,165 @@
-import markdown
-from bs4 import BeautifulSoup
-from PIL import Image
-import os
 import re
-import base64
-from io import BytesIO
+import sys
+from pathlib import Path
 
-class MarkdownConverter:
-    def __init__(self, image_size=(800, 600), image_dir="images"):
-        self.image_size = image_size
-        self.image_dir = image_dir
-        os.makedirs(self.image_dir, exist_ok=True)
+import markdown
+import yaml
 
-    def _process_images(self, html_content):
-        soup = BeautifulSoup(html_content, 'html.parser')
-        for img in soup.find_all('img'):
-            src = img.get('src', '')
-            alt = img.get('alt', '')
-            title = img.get('title', '')
-            caption = title if title else alt
-            
-            if src.startswith(('http://', 'https://')):
-                try:
-                    import requests
-                    response = requests.get(src)
-                    img_data = response.content
-                except Exception as e:
-                    print(f"Error downloading image {src}: {e}")
-                    continue
-            else:
-                try:
-                    with open(src, 'rb') as f:
-                        img_data = f.read()
-                except Exception as e:
-                    print(f"Error reading local image {src}: {e}")
-                    continue
+# -------------------------------------------------------------
+# Configuration constants
+# -------------------------------------------------------------
+CSS_LINK = '<link rel="stylesheet" href="css/pico.classless.cyan.min.css" />'
+MATHJAX_SCRIPT = (
+    '<script type="text/x-mathjax-config">\n'
+    "MathJax.Hub.Config({\n"
+    "  tex2jax: {\n"
+    '    inlineMath: [["$","$"]],\n'
+    '    displayMath: [["$$","$$"]],\n'
+    "    processEscapes: true\n"
+    "  },\n"
+    '  "HTML-CSS": {\n'
+    "    linebreaks: { automatic: true },\n"
+    '    availableFonts: ["STIX"],\n'
+    '    preferredFont: "STIX",\n'
+    '    webFont: "STIX-Web",\n'
+    "    imageFont: null,\n"
+    "    undefinedFamily: \"STIXGeneral,'Arial Unicode MS',serif\"\n"
+    "  }\n"
+    "});\n"
+    "</script>\n"
+    '<script defer src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-AMS_CHTML"></script>'
+)
+DEFAULT_META = {
+    "title": "Untitled Post",
+    "description": "Markdown to HTML output",
+    "keywords": "blog, markdown, python",
+    "canonical": "",
+    "image": "imgs/social.webp",
+    "url": "",
+}
 
-            try:
-                image = Image.open(BytesIO(img_data))
-                image = image.resize(self.image_size, Image.Resampling.LANCZOS)
-                
-                filename = f"processed_{hash(src)}.png"
-                output_path = os.path.join(self.image_dir, filename)
-                image.save(output_path)
-                
-                figure = soup.new_tag('figure')
-                figure['class'] = 'image-caption'
-                
-                new_img = soup.new_tag('img')
-                new_img['src'] = os.path.relpath(output_path, os.path.dirname(self.image_dir))
-                new_img['alt'] = alt
-                figure.append(new_img)
-                
-                if caption:
-                    figcaption = soup.new_tag('figcaption')
-                    figcaption.string = caption
-                    figure.append(figcaption)
-                
-                img.replace_with(figure)
-                
-            except Exception as e:
-                print(f"Error processing image {src}: {e}")
+IMG_CAPTION_PATTERN = re.compile(
+    r'<p>\s*<img([^>]*?)title="([^"]+)"([^>]*?)>\s*</p>', re.IGNORECASE
+)
 
-        return str(soup)
 
-    def convert(self, markdown_text):
-        mathjax_config = """
-        <script type="text/x-mathjax-config">
-            MathJax.Hub.Config({
-                tex2jax: {
-                    inlineMath: [['$', '$'], ['\\(', '\\)']],
-                    displayMath: [['$$', '$$'], ['\\[', '\\]']],
-                    processEscapes: true
-                },
-                "HTML-CSS": {
-                    linebreaks: { automatic: true },
-                    availableFonts: ["STIX"],
-                    preferredFont: "STIX",
-                    webFont: "STIX-Web",
-                    imageFont: null,
-                    undefinedFamily: "STIXGeneral,'Arial Unicode MS',serif"
-                }
-            });
-        </script>
-        <script type="text/javascript" async
-            src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
-        </script>
-        """
-        
-        html = markdown.markdown(
-            markdown_text,
-            extensions=[
-                'markdown.extensions.extra',
-                'markdown.extensions.codehilite',
-                'markdown.extensions.tables',
-                'markdown.extensions.fenced_code',
-                'markdown.extensions.smarty',
-                'markdown.extensions.toc',
-                'pymdownx.tasklist'
-            ]
-        )
-        
-        html = self._process_images(html)
-        
-        full_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }}
-                img {{ max-width: 100%; height: auto; }}
-                pre {{ background-color: #f4f4f4; padding: 15px; border-radius: 5px; }}
-                blockquote {{ border-left: 4px solid #ddd; padding-left: 15px; color: #666; }}
-                code {{ background-color: #f4f4f4; padding: 2px 4px; border-radius: 3px; }}
-                .MathJax {{ font-size: 1.1em; }}
-                input[type="checkbox"] {{ margin-right: 8px; }}
-                .task-list-item {{ list-style-type: none; }}
-                .task-list-item-checkbox {{ margin-right: 8px; }}
-                figure.image-caption {{ margin: 1em 0; text-align: center; }}
-                figure.image-caption img {{ display: block; margin: 0 auto; }}
-                figure.image-caption figcaption {{ 
-                    color: #666;
-                    font-size: 0.9em;
-                    margin-top: 0.5em;
-                    text-align: center;
-                }}
-            </style>
-            {mathjax_config}
-        </head>
-        <body>
-            {html}
-        </body>
-        </html>
-        """
-        
-        return full_html
+def convert_img_captions(html: str) -> str:
+    """Wrap images (with title attribute) in <figure> adding <figcaption>."""
 
-    def convert_file(self, input_file, output_file):
-        with open(input_file, 'r', encoding='utf-8') as f:
-            markdown_text = f.read()
-        
-        html = self.convert(markdown_text)
-        
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(html)
+    def _repl(match):
+        before_attrs = match.group(1).strip()
+        caption = match.group(2).strip()
+        after_attrs = match.group(3).strip()
+        attrs = " ".join([part for part in (before_attrs, after_attrs) if part]).strip()
+        return f'<figure><img{(" " + attrs) if attrs else ""} /><figcaption>{caption}</figcaption></figure>'
+
+    return IMG_CAPTION_PATTERN.sub(_repl, html)
+
+
+# -------------------------------------------------------------
+# Helper functions
+# -------------------------------------------------------------
+
+
+def parse_markdown(file_path: Path):
+    """Parse the markdown file, extracting YAML front-matter if present."""
+    text = file_path.read_text(encoding="utf-8")
+
+    if text.startswith("---"):
+        # Split front-matter and body
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            _, yaml_block, md_body = parts[0], parts[1], parts[2]
+            meta = yaml.safe_load(yaml_block) or {}
+            return meta, md_body.lstrip()
+    return {}, text
+
+
+def build_html(meta: dict, body_html: str) -> str:
+    """Construct the final HTML document string."""
+    m = {**DEFAULT_META, **meta}
+    title = m["title"]
+    description = m["description"]
+    keywords = m["keywords"]
+    canonical = m["canonical"] or m.get("url", "")
+    url = m.get("url", canonical)
+    image = m.get("image", DEFAULT_META["image"])
+
+    head = f"""
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />
+    <link rel=\"icon\" href=\"/favicon.ico\" />
+    <meta name=\"color-scheme\" content=\"dark\">
+
+    <title>{title}</title>
+    <meta name=\"title\" content=\"{title}\" />
+    <meta name=\"description\" content=\"{description}\" />
+    <meta name=\"keywords\" content=\"{keywords}\" />
+    <link rel=\"canonical\" href=\"{canonical}\" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property=\"og:type\" content=\"website\" />
+    <meta property=\"og:url\" content=\"{url}\" />
+    <meta property=\"og:title\" content=\"{title}\" />
+    <meta property=\"og:description\" content=\"{description}\" />
+    <meta property=\"og:image\" content=\"{image}\" />
+
+    <!-- Twitter -->
+    <meta property=\"twitter:card\" content=\"summary_large_image\" />
+    <meta property=\"twitter:url\" content=\"{url}\" />
+    <meta property=\"twitter:title\" content=\"{title}\" />
+    <meta property=\"twitter:description\" content=\"{description}\" />
+    <meta property=\"twitter:image\" content=\"{image}\" />
+    {CSS_LINK}
+    {MATHJAX_SCRIPT}
+    """.strip()
+
+    html_doc = f"""<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+{head}
+</head>
+<body>
+<main class=\"container\">
+{body_html}
+</main>
+</body>
+</html>"""
+    return html_doc
+
+
+def convert(markdown_path: Path, output_path: Path):
+    """Convert a markdown file to HTML and write to output path."""
+    meta, md_body = parse_markdown(markdown_path)
+
+    md = markdown.Markdown(
+        extensions=[
+            "fenced_code",
+            "footnotes",
+            "tables",
+            "toc",
+        ]
+    )
+    body_html = md.convert(md_body)
+    body_html = convert_img_captions(body_html)
+    full_html = build_html(meta, body_html)
+    output_path.write_text(full_html, encoding="utf-8")
+    print(f"[ OK ] Wrote HTML to {output_path}")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python converter.py <input.md> [output.html]")
+        sys.exit(1)
+
+    input_file = Path(sys.argv[1])
+    if not input_file.exists():
+        print(f"Input file {input_file} does not exist.")
+        sys.exit(1)
+
+    if len(sys.argv) >= 3:
+        output_file = Path(sys.argv[2])
+    else:
+        output_file = input_file.with_suffix(".html")
+
+    convert(input_file, output_file)
