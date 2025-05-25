@@ -38,22 +38,39 @@ DEFAULT_META = {
     "url": "",
 }
 
-IMG_CAPTION_PATTERN = re.compile(
-    r'<p>\s*<img([^>]*?)title="([^"]+)"([^>]*?)>\s*</p>', re.IGNORECASE
-)
+IMG_P_TAG = re.compile(r"<p>\s*(<img[^>]+>)\s*</p>", re.IGNORECASE)
 
 
 def convert_img_captions(html: str) -> str:
-    """Wrap images (with title attribute) in <figure> adding <figcaption>."""
+    """Wrap standalone <img> paragraphs in <figure> and add <figcaption>.
+
+    Caption priority: title attribute > alt attribute.
+    """
 
     def _repl(match):
-        before_attrs = match.group(1).strip()
-        caption = match.group(2).strip()
-        after_attrs = match.group(3).strip()
-        attrs = " ".join([part for part in (before_attrs, after_attrs) if part]).strip()
-        return f'<figure><img{(" " + attrs) if attrs else ""} /><figcaption>{caption}</figcaption></figure>'
+        img_tag = match.group(1)
 
-    return IMG_CAPTION_PATTERN.sub(_repl, html)
+        # Extract attributes
+        title_m = re.search(r'title="([^"]+)"', img_tag, re.IGNORECASE)
+        alt_m = re.search(r'alt="([^"]+)"', img_tag, re.IGNORECASE)
+        caption = None
+        if title_m:
+            caption = title_m.group(1).strip()
+        elif alt_m:
+            caption = alt_m.group(1).strip()
+
+        if caption:
+            # convert URLs in caption to clickable links
+            def linkify(match):
+                url = match.group(0)
+                return f'<a href="{url}" target="_blank" rel="noopener noreferrer">{url}</a>'
+
+            caption_html = re.sub(r"https?://[^\s]+", linkify, caption)
+            return f"<figure>{img_tag}<figcaption>{caption_html}</figcaption></figure>"
+        # If no caption, leave unchanged
+        return match.group(0)
+
+    return IMG_P_TAG.sub(_repl, html)
 
 
 # -------------------------------------------------------------
