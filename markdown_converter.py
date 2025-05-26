@@ -29,6 +29,20 @@ MATHJAX_SCRIPT = (
     "</script>\n"
     '<script defer src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-AMS_CHTML"></script>'
 )
+STYLE_BLOCK = (
+    "<style>\n"
+    "figure img, p > img {\n"
+    "  max-width: 33vw;\n"
+    "  display: block;\n"
+    "  margin-left: auto;\n"
+    "  margin-right: auto;\n"
+    "}\n"
+    "figcaption {\n"
+    "  text-align: center;\n"
+    "  font-style: italic;\n"
+    "}\n"
+    "</style>"
+)
 DEFAULT_META = {
     "title": "Untitled Post",
     "description": "Markdown to HTML output",
@@ -36,6 +50,7 @@ DEFAULT_META = {
     "canonical": "",
     "image": "imgs/social.webp",
     "url": "",
+    "date": "",  # ISO-8601 e.g. 2024-03-15
 }
 
 IMG_P_TAG = re.compile(r"<p>\s*(<img[^>]+>)\s*</p>", re.IGNORECASE)
@@ -101,6 +116,7 @@ def build_html(meta: dict, body_html: str) -> str:
     canonical = m["canonical"] or m.get("url", "")
     url = m.get("url", canonical)
     image = m.get("image", DEFAULT_META["image"])
+    date = m.get("date", DEFAULT_META["date"])
 
     head = f"""
     <meta charset=\"utf-8\" />
@@ -128,6 +144,7 @@ def build_html(meta: dict, body_html: str) -> str:
     <meta property=\"twitter:description\" content=\"{description}\" />
     <meta property=\"twitter:image\" content=\"{image}\" />
     {CSS_LINK}
+    {STYLE_BLOCK}
     {MATHJAX_SCRIPT}
     """.strip()
 
@@ -159,9 +176,24 @@ def convert(markdown_path: Path, output_path: Path):
     )
     body_html = md.convert(md_body)
     body_html = convert_img_captions(body_html)
+    body_html = inject_date_subtitle(body_html, meta.get("date", ""))
     full_html = build_html(meta, body_html)
     output_path.write_text(full_html, encoding="utf-8")
     print(f"[ OK ] Wrote HTML to {output_path}")
+
+
+def inject_date_subtitle(html: str, date: str) -> str:
+    """Insert a subtitle line with the date immediately after the first <h1>."""
+    if not date:
+        return html
+
+    match = re.search(r"<h1[^>]*>.*?</h1>", html, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return html
+
+    end = match.end()
+    subtitle = f'\n<p class="subtitle"><time datetime="{date}">{date}</time></p>'
+    return html[:end] + subtitle + html[end:]
 
 
 if __name__ == "__main__":
